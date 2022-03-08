@@ -1,0 +1,532 @@
+@model List<WindowsRefreshTracking.ViewModels.vmWRT>
+@{
+    ViewBag.Title = "Home Page";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style type="text/css">
+    div.dataTables_length {
+        margin-right: 1em;
+    }
+</style>
+
+<script>
+    var isAdmin = @(ViewBag.IsAdmin.ToString().ToLower());
+</script>
+
+<script type="text/javascript">
+
+    var prevRowIndex;
+    var prevCellIndex;
+    var prevCellContent;
+
+    var currRecordID;
+    var currFieldName;
+    var newSelectValue;
+    var newTextValue;
+
+    $(function () {
+
+        initDataTable();
+
+        // Activate an inline edit on click of a table cell
+        $('#tblWRT').on('click', 'td', function (e) {
+            if (prevCellIndex != null)
+            {
+                resetPrevCellEdit();
+                displayForm($(this), "row");
+            }
+            else
+            {
+                displayForm($(this), "row");
+            }
+        });
+
+        //used to clearout the contents of the Create modal when closed so will reload empty when shown again
+        $('#fsModalCreate').on('hidden.bs.modal', function () {
+            // remove the bs.modal data attribute from it
+            $(this).removeData('bs.modal');
+            // and empty the modal-content element
+            $('#fsModalCreate').empty();
+        });
+
+        //used to clearout the contents of the History modal when closed so will reload empty when shown again
+        $('#fsModalViewHistory').on('hidden.bs.modal', function () {
+            // remove the bs.modal data attribute from it
+            $(this).removeData('bs.modal');
+            // and empty the modal-content element
+            $('#fsModalViewHistory').empty();
+        });
+
+        //used to clearout the contents of the Notes modal when closed so will reload empty when shown again
+        $('#fsModalViewNotes').on('hidden.bs.modal', function () {
+            // remove the bs.modal data attribute from it
+            $(this).removeData('bs.modal');
+            // and empty the modal-content element
+            $('#fsModalViewNotes').empty();
+        });
+
+        //$('#ddlEmployee').on('change', function (e) {
+        //    var valueSelected = this.value;
+        //    var table = $('#tblWRT').DataTable();
+
+        //    table.ajax.reload();
+        //});
+
+        $("body").delegate(".date-picker", "focusin", function () {
+            $(this).datepicker({
+                changeMonth: true,
+                changeYear: true,
+                yearRange: '1960:2027'
+            });
+        });
+
+        $('html').on('click', function (e) {
+            var tableId = $(event.target).closest("table").attr("id");
+            if (tableId != 'tblWRT') {
+                if (prevRowIndex != null)
+                {
+                    resetPrevCellEdit();
+                }
+            }
+        });
+
+        // Handles the Owner textbox change event
+        $('#tblWRT').on('change', '.ownerSelect', function () {
+            var idParts = $(this).attr('id').split('_');
+            var id = idParts[1];
+            currRecordID = id;
+            currFieldName = 'Owner';
+            newSelectValue = $(this).find("option:selected").text();
+        });
+        // Handles the Point Of Contact textbox change event
+        $('#tblWRT').on('focusout', '.pocText', function () {
+            var idParts = $(this).attr('id').split('_');
+            var id = idParts[1];
+            currRecordID = id;
+            currFieldName = 'PointOfContact';
+            newTextValue = $(this).val().trim();
+        });
+        // Handles the Plan Of Action dropdown change event
+        $('#tblWRT').on('change', '.poaSelect', function () {
+            var idParts = $(this).attr('id').split('_');
+            var id = idParts[1];
+            currRecordID = id;
+            currFieldName = 'PlanOfAction';
+            newSelectValue = $(this).find("option:selected").text();
+        });
+        // Handles the Est Completion Date textbox change event
+        $('#tblWRT').on('focusout', '.ecdText', function () {
+            var idParts = $(this).attr('id').split('_');
+            var id = idParts[1];
+            currRecordID = id;
+            currFieldName = 'EstCompletionDate';
+            newTextValue = $(this).val().trim();
+        });
+        // Handles the iStar Ticket Numbers textbox change event
+        $('#tblWRT').on('focusout', '.istText', function () {
+            var idParts = $(this).attr('id').split('_');
+            var id = idParts[1];
+            currRecordID = id;
+            currFieldName = 'iStarTicketNumbers';
+            newTextValue = $(this).val().trim();
+        });
+
+    });
+
+    function initDataTable()
+    {
+        $('#tblWRT').DataTable({
+            ajax: {
+                url: '@Url.Action("GetWRTList", "Home", null, Request.Url.Scheme)',
+                type: 'GET',
+                dataSrc: 'data'
+            },
+            dom: 'lBfrtip',
+            buttons: [{
+                extend: 'excel',
+                text: 'Export to Excel',
+                filename: 'WindowsRefreshTracking_' + moment().format("DD-MMM-YYYY"),
+                className: 'excelButton'
+            }],
+            order: [[1, 'asc']],
+            columns: [
+                { data: "id" },
+                { data: "ServerName" },
+                { data: "ServerType" },
+                { data: "OS" },
+                { data: "IPAddress" },
+                { data: "Subnet" },
+                { data: "Owner" },
+                { data: "PointOfContact" },
+                { data: "PlanOfAction" },
+                { data: "EstDateOfComp_formatted" },
+                { data: "IStarTicketNumbers" },
+                { data: "id", width: "3%" }
+            ],
+            columnDefs: [
+                {
+                    targets: 1,
+                    render: function (data, type, row, meta) {
+                        var mvcHistoryPath = '@Url.Action("WRTHistory", "Home", null, Request.Url.Scheme)';
+                        return '<a id="hypHistory' + row.id + '" href="' + mvcHistoryPath + '?wrtID=' + row.id + '" data-toggle="modal" data-target="#fsModalViewHistory">' + data + '</a>';
+                    }
+                },
+                {
+                    targets: 11,
+                    render: function (data, type, row, meta) {
+                        var mvcNotesPath = '@Url.Action("GetNotes", "Home", null, Request.Url.Scheme)';
+                        var link;
+                        if (row.NoteCount > 0)
+                            link = '<a id="hypNotes' + row.id + '" href="' + mvcNotesPath + '?wrtID=' + row.id + '" style="color: red;" data-toggle="modal" data-target="#fsModalViewNotes">Notes</a>';
+                        else
+                            link = '<a id="hypNotes' + row.id + '" href="' + mvcNotesPath + '?wrtID=' + row.id + '" data-toggle="modal" data-target="#fsModalViewNotes">Notes</a>';
+
+                        return link;
+                    }
+                },
+                {
+                    'searchable': false, 'targets': 11
+                },
+                {
+                    'orderable': false, 'targets': 11
+                },
+                {
+                    "width": "5%", "targets": 2
+                },
+                {
+                    "width": "10%", "targets": 8
+                },
+                {
+                    "width": "7%", "targets": 9
+                },
+                {
+                    "width": "3%", "targets": 11
+                }
+            ],
+            select: {
+                style: 'os',
+                selector: 'td:first-child'
+            },
+            initComplete: function () {
+                this.api().columns([6]).every( function () {
+                    var column = this;
+                    var select = $('<select><option value=""></option></select>')
+                        .appendTo( $(column.header()) )
+                        .on( 'change', function () {
+                            var val = $.fn.dataTable.util.escapeRegex(
+                                $(this).val()
+                            );
+
+                            column
+                                .search( val ? '^'+val+'$' : '', true, false )
+                                .draw();
+                        } );
+
+                    column.data().unique().sort().each( function ( d, j ) {
+                        select.append( '<option value="'+d+'">'+d+'</option>' )
+                    } );
+                } );
+            }
+        });
+    }
+
+    function displayForm(cell, type) {
+        var column = cell.attr('class'),
+            id = cell.closest('tr').find('td:eq(0)').text(),
+            cellWidth = cell.css('width'),
+            prevContent = cell.text(),
+            form = '<form  action="javascript:this.preventDefault">'
+
+        //Leave function if Owner cell clicked AND user is not Admin
+        if (cell.index() == 6 && isAdmin == false) {
+            return;
+        }
+
+        if (cell.index() == 6) // Owner
+        {
+            form = form +
+                '<select size=1 style="height:2em;" id="newOwner_' + id + '" class="ownerSelect" >' +
+                '</select>';
+            prevCellContent = prevContent;
+        }
+
+        if (cell.index() == 7) // PointOfContact
+        {
+            form = form +
+                '<input type="text" style="width: 100%" id="newPointOfContact_' + id + '"  size="4" class="pocText" value="' + prevContent + '"/><input type="hidden" name="id" value="' + id + '"/>' +
+                '<input type="hidden" name="column" value="' + column + '"/>';
+            prevCellContent = prevContent;
+        }
+
+        if (cell.index() == 8) // PlanOfAction
+        {
+            form = form +
+                '<select size=1 style="height:2em;" id="newPlanOfAction_' + id + '" class="poaSelect" >' +
+                '<option value="">&nbsp;</option>' +
+                '<option value="Migrate">Migrate</option>' +
+                '<option value="Decomm">Decomm</option>' +
+                '<option value="In Place OS Upgrade">In Place OS Upgrade</option>' +
+                '<option value="Isolate">Isolate</option>' +
+                '</select>';
+            prevCellContent = prevContent;
+        }
+
+        if (cell.index() == 9) // EstDateOfCompletion
+        {
+            form = form +
+                '<input type="text" style="width: 100%" id="newEstDateOfCompletion_' + id + '"  size="4" class="ecdText" value="' + prevContent + '"/><input type="hidden" name="id" value="' + id + '"/>' +
+                '<input type="hidden" name="column" value="' + column + '"/>';
+            prevCellContent = prevContent;
+        }
+
+        if (cell.index() == 10) // IStarTicketNumbers
+        {
+            form = form +
+                '<input type="text" style="width: 100%" id="newIStarTicketNumbers_' + id + '"  size="4" class="istText" value="' + prevContent + '"/><input type="hidden" name="id" value="' + id + '"/>' +
+                '<input type="hidden" name="column" value="' + column + '"/>';
+            prevCellContent = prevContent;
+        }
+
+        form = form + '</form>';
+
+
+        if (cell.index() > 5 && cell.index() != 11) // don't want to change to edit mode when first 5 columns or Notes col are clicked.
+        {
+
+            prevRowIndex = cell.closest('tr').index();
+            prevCellIndex = cell.index();
+
+            cell.html(form).find('select').val(prevContent)
+            cell.focus()
+                .css('width', cellWidth)
+                .css('line-height', 1);
+
+            cell.on('click', function () { return false; });
+            cell.on('keydown', function (e) {
+                if (e.keyCode == 13) //enter key
+                {
+
+                    //changeField(cell, type);
+
+                }
+                else if (e.keyCode == 27) // Esc Key (cancel editing)
+                {
+                    cell.text(prevContent);
+                    cell.off('click');
+                }
+            });
+
+            // set focus to actual control
+            if (cell.index() == 6) {
+                var ctrlName = '#newOwner_' + id;
+
+                //make ajax call to get users json
+                $.when($.getJSON("Home/GetUsersForDropdown", null, function (data) {
+                    $(".ownerSelect option").remove(); // Remove all <option> child tags.
+                    $.each(data.Users, function (index, item) { // Iterates through a collection
+                        $(".ownerSelect").append( // Append an object to the inside of the select box
+                            $("<option></option>") // Yes you can do this.
+                                .text(item.FullName)
+                                .val(item.FullName)
+                        );
+                    });
+                })).then(function () {
+                    $(ctrlName).val(prevContent);
+                });
+            }
+
+            if (cell.index() == 7) {
+                var ctrlName = '#newPointOfContact_' + id;
+                $(ctrlName).focus();
+            }
+
+            if (cell.index() == 8) {
+                var ctrlName = '#newPlanOfAction_' + id;
+                $(ctrlName).focus();
+            }
+
+            if (cell.index() == 9) {
+                var ctrlName = '#newEstDateOfCompletion_' + id;
+                $(ctrlName).focus();
+            }
+
+            if (cell.index() == 10) {
+                var ctrlName = '#newIStarTicketNumbers_' + id;
+                $(ctrlName).focus();
+            }
+        }
+    }
+
+    function resetPrevCellEdit()
+    {
+        var cell = $('#tblWRT tr').eq(prevRowIndex + 1).find('td').eq(prevCellIndex);
+
+        if (newTextValue != null && newTextValue != prevCellContent)
+        {
+            // if here we've had a textbox update which has diff value so save to db
+            if (currFieldName == 'PointOfContact') {
+                savePointOfContactValue();
+                prevCellContent = newTextValue;
+            }
+            if (currFieldName == 'EstCompletionDate') {
+                saveEstCompletionDateValue();
+                prevCellContent = newTextValue;
+            }
+            if (currFieldName == 'iStarTicketNumbers') {
+                saveIStarTicketNumbersValue();
+                prevCellContent = newTextValue;
+            }
+        }
+
+        if (newSelectValue != null && newSelectValue != prevCellContent)
+        {
+            // if here we've had a dropdown update which has diff value so save to db
+            if (currFieldName == 'Owner') {
+                saveOwnerValue();
+                prevCellContent = newSelectValue;
+            }
+            if (currFieldName == 'PlanOfAction') {
+                savePlanOfActionValue();
+                prevCellContent = newSelectValue;
+            }
+        }
+
+        cell.unbind('click');
+        cell.on('click', function () { return true; });
+        cell.html(prevCellContent);
+        cell.removeAttr('style');
+
+        prevCellIndex = null;
+        prevRowIndex = null;
+        currFieldName = null;
+        newTextValue = null;
+        newSelectValue = null;
+        return true;
+    }
+
+    function savePointOfContactValue()
+    {
+        var post_data = { 'wrtID': currRecordID, 'PointOfContact': newTextValue };
+        var mvcPath = '@Url.Action("UpdatePOC", "Home", null, Request.Url.Scheme)';
+
+        $.post(mvcPath, post_data, function () { });
+    }
+
+    function savePlanOfActionValue()
+    {
+        var post_data = { 'wrtID': currRecordID, 'PlanOfAction': newSelectValue };
+        var mvcPath = '@Url.Action("UpdatePOA", "Home", null, Request.Url.Scheme)';
+
+        $.post(mvcPath, post_data, function () { });
+    }
+
+    function saveEstCompletionDateValue() {
+        var post_data = { 'wrtID': currRecordID, 'EstCompletionDate': newTextValue };
+        var mvcPath = '@Url.Action("UpdateECD", "Home", null, Request.Url.Scheme)';
+        var m = moment(newTextValue, ["MM/DD/YYYY", "M/DD/YYYY", "M/D/YYYY", "MM/D/YYYY"], true);
+
+        if (newTextValue == '' || m.isValid()) {
+            $.post(mvcPath, post_data, function () { });
+        }
+        else {
+            newTextValue = prevCellContent;
+        }
+    }
+
+    function saveIStarTicketNumbersValue() {
+        var post_data = { 'wrtID': currRecordID, 'iStarTicketNumbers': newTextValue };
+        var mvcPath = '@Url.Action("UpdateIST", "Home", null, Request.Url.Scheme)';
+
+        $.post(mvcPath, post_data, function () { });
+    }
+
+    function saveOwnerValue() {
+        var post_data = { 'wrtID': currRecordID, 'Owner': newSelectValue };
+        var mvcPath = '@Url.Action("UpdateOwner", "Home", null, Request.Url.Scheme)';
+
+        $.post(mvcPath, post_data, function () { });
+        //$('#tblWRT').DataTable().destroy();
+        //initDataTable();
+        $('#tblWRT').DataTable().draw('full-reset');
+    }
+
+    function GetNoteCount(wrtID)
+    {
+        var post_data = { 'wrtID': wrtID };
+
+    }
+
+</script>
+
+<div style="margin-top:-15px; margin-bottom:30px;">
+    <h3 style="display: inline-block; margin-right: 80px;">Server List</h3>
+    @if (ViewBag.IsAdmin)
+    {
+        @Html.ActionLink("Add Server", "AddWRTRecord", "Home", null, new { data_toggle = "modal", data_target = "#fsModalCreate" })
+    }
+</div>
+
+<table id="tblWRT" class="display dataTable no-footer" cellspacing="0" width="100%">
+    <thead>
+        <tr>
+            <th>id</th>
+            <th>Server Name</th>
+            <th>Server Type</th>
+            <th>OS</th>
+            <th>IP Address</th>
+            <th>Subnet</th>
+            <th>Owner</th>
+            <th>Point Of Contact</th>
+            <th>Plan Of Action</th>
+            <th>Est Completion Date</th>
+            <th>iStar Ticket Numbers</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
+</table>
+
+<!-- Create Page modal overlay -->
+<div id="fsModalCreate" class="modal animated fadeIn" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+        </div>
+    </div>
+</div>
+
+<!-- View History Page modal overlay -->
+<div id="fsModalViewHistory" class="modal animated fadeIn" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+        </div>
+    </div>
+</div>
+
+<!-- View Notes Page modal overlay -->
+<div id="fsModalViewNotes" class="modal animated fadeIn" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+        </div>
+    </div>
+</div>
+
+<!-- AddNote modal overlay -->
+<div id="fsModalNote" class="modal animated fadeIn" tabindex="-1" role="dialog" aria-labelledby="ModalLabelNote" aria-hidden="true">
+    <div class="modal-dialog" style="width: 600px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="ModalLabelNote" class="modal-title">New note</h3>
+            </div>
+            <div class="modal-body" id="modalNote">
+                <label class="control-label" style="font-size: 130%;">Note</label>
+                <br />
+                <textarea id="txtNote" name="txtNote" style="max-width: 500px; width: 500px; height: 92px;" placeholder="enter note"></textarea>
+                <br />
+                <input type="button" value="Create" class="btn btn-default" data-dismiss="modal" style="background-color: #00589a; color: #ffffff; margin-top: 20px;" onclick="addNote()" />
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">&times;<small>Close</small></button>
+            </div>
+        </div>
+    </div>
+</div>
